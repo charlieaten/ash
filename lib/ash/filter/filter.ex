@@ -20,6 +20,7 @@ defmodule Ash.Filter do
   alias Ash.Query.Function.{
     Ago,
     At,
+    ByteSize,
     CompositeType,
     Contains,
     CountNils,
@@ -76,6 +77,7 @@ defmodule Ash.Filter do
   @functions [
     Ago,
     At,
+    ByteSize,
     CompositeType,
     Contains,
     CountNils,
