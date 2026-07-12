@@ -343,6 +343,7 @@ spark_locals_without_parens = [
   undo: 1,
   undo_action: 1,
   uniq?: 1,
+  unique_on_join_relationship?: 1,
   update: 1,
   update: 2,
   update: 3,
