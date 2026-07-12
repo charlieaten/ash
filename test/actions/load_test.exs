@@ -419,6 +419,20 @@ defmodule Ash.Test.Actions.LoadTest do
         destination_attribute_on_join_resource :category_id
       end
 
+      has_many :selected_post_categories,
+               Ash.Test.Actions.LoadTest.AssertedUniquePostCategory do
+        destination_attribute :post_id
+        filter expr(selected == true)
+      end
+
+      many_to_many :asserted_unique_categories, Ash.Test.Actions.LoadTest.Category do
+        join_relationship :selected_post_categories
+        source_attribute_on_join_resource :post_id
+        destination_attribute_on_join_resource :category_id
+        read_action :keyset
+        unique_on_join_relationship? true
+      end
+
       has_many :a_categories, Ash.Test.Actions.LoadTest.Category do
         through [:post_categories, :category]
         filter expr(name == "A")
@@ -456,6 +470,33 @@ defmodule Ash.Test.Actions.LoadTest do
         allow_nil?: false,
         public?: true
       )
+    end
+  end
+
+  defmodule AssertedUniquePostCategory do
+    @moduledoc false
+    use Ash.Resource, domain: Domain, data_layer: Ash.DataLayer.Ets
+
+    ets do
+      private?(true)
+    end
+
+    actions do
+      default_accept :*
+      defaults([:read, :destroy, create: :*, update: :*])
+    end
+
+    attributes do
+      uuid_primary_key :id
+      attribute :selected, :boolean, allow_nil?: false, default: false, public?: true
+    end
+
+    relationships do
+      belongs_to :post, Post, allow_nil?: false, public?: true
+
+      belongs_to :category, Ash.Test.Actions.LoadTest.Category,
+        allow_nil?: false,
+        public?: true
     end
   end
 
@@ -2373,6 +2414,56 @@ defmodule Ash.Test.Actions.LoadTest do
   end
 
   describe "many_to_many with join_relationship" do
+    test "logical join uniqueness enables keyset pagination" do
+      post =
+        Post
+        |> Ash.Changeset.for_create(:create, %{title: "Test Post"})
+        |> Ash.create!()
+
+      categories =
+        for i <- 0..3 do
+          category =
+            Category
+            |> Ash.Changeset.for_create(:create, %{name: "category#{i}"})
+            |> Ash.create!()
+
+          AssertedUniquePostCategory
+          |> Ash.Changeset.for_create(:create, %{
+            post_id: post.id,
+            category_id: category.id,
+            selected: true
+          })
+          |> Ash.create!()
+
+          category
+        end
+
+      AssertedUniquePostCategory
+      |> Ash.Changeset.for_create(:create, %{
+        post_id: post.id,
+        category_id: hd(categories).id,
+        selected: false
+      })
+      |> Ash.create!()
+
+      query =
+        Category
+        |> Ash.Query.for_read(:keyset)
+        |> Ash.Query.page(limit: 2)
+        |> Ash.Query.sort(:name)
+
+      assert %{asserted_unique_categories: page} =
+               Ash.load!(post, asserted_unique_categories: query)
+
+      assert %Ash.Page.Keyset{
+               results: [%{name: "category0"}, %{name: "category1"}]
+             } = page
+
+      assert %Ash.Page.Keyset{
+               results: [%{name: "category2"}, %{name: "category3"}]
+             } = Ash.page!(page, :next)
+    end
+
     test "many_to_many inherits sort and limit from join_relationship" do
       post =
         Post
