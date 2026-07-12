@@ -14,6 +14,7 @@ defmodule Ash.Resource.Relationships.ManyToMany do
     :source_attribute_on_join_resource,
     :destination_attribute_on_join_resource,
     :join_relationship,
+    :unique_on_join_relationship?,
     :not_found_message,
     :violation_message,
     :domain,
@@ -54,6 +55,7 @@ defmodule Ash.Resource.Relationships.ManyToMany do
           filterable?: boolean,
           sortable?: boolean,
           join_relationship: atom,
+          unique_on_join_relationship?: boolean,
           source_attribute: atom,
           destination_attribute: atom,
           source_attribute_on_join_resource: atom,
@@ -90,6 +92,12 @@ defmodule Ash.Resource.Relationships.ManyToMany do
                     type: :atom,
                     doc:
                       "The has_many relationship to the join resource. Defaults to `<relationship_name>_join_assoc`."
+                  ],
+                  unique_on_join_relationship?: [
+                    type: :boolean,
+                    default: false,
+                    doc:
+                      "Whether the join relationship is guaranteed to return at most one row for each source and destination attribute pair. This is an assertion used to enable database-level pagination; it does not create a unique constraint."
                   ]
                 ],
                 @global_opts,

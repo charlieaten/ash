@@ -1662,8 +1662,8 @@ defmodule Ash.Actions.Read.Relationships do
                        related_query.domain,
                        value,
                        query.filter,
-                       tenant: query.tenant,
-                       actor: query.actor
+                       tenant: related_query.tenant,
+                       actor: related_query.actor
                      ) do
                   {:ok, value} ->
                     value
@@ -2099,6 +2099,13 @@ defmodule Ash.Actions.Read.Relationships do
       {query.offset, query.limit}
     end
   end
+
+  defp is_many_to_many_not_unique_on_join?(
+         %{type: :many_to_many, unique_on_join_relationship?: true},
+         _query,
+         _source_query
+       ),
+       do: false
 
   defp is_many_to_many_not_unique_on_join?(
          %{type: :many_to_many} = relationship,
