@@ -1524,7 +1524,7 @@ defmodule Ash.Filter do
         Ash.Resource.Info.primary_action!(relationship.destination, :read).name
 
     query =
-      relationship.destination
+      base_query
       |> Ash.Query.set_context(relationship.context)
       |> Ash.Query.set_context(source_context)
       |> Ash.Query.sort(relationship.sort, prepend?: true)

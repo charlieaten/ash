@@ -231,6 +231,12 @@ defmodule Ash.Test.Actions.LoadTest do
         destination_attribute: :author_id
       )
 
+      has_many(:posts_by_title, Ash.Test.Actions.LoadTest.Post,
+        destination_attribute: :author_id,
+        read_action: :by_title,
+        public?: true
+      )
+
       has_one(:latest_post, Ash.Test.Actions.LoadTest.Post,
         destination_attribute: :author_id,
         sort: [inserted_at: :desc],
@@ -321,6 +327,17 @@ defmodule Ash.Test.Actions.LoadTest do
           keyset? true
           countable true
         end
+      end
+
+      read :by_title do
+        pagination do
+          required? false
+          keyset? true
+          countable true
+        end
+
+        argument :title, :string, allow_nil?: false
+        filter expr(title == ^arg(:title))
       end
 
       read :required_pagination do
@@ -2350,6 +2367,34 @@ defmodule Ash.Test.Actions.LoadTest do
 
       assert %Ash.Page.Offset{count: 3} = author1.posts
       assert %Ash.Page.Offset{count: 6} = author2.posts
+    end
+
+    test "passes read action arguments when counting paginated relationships" do
+      author =
+        Author
+        |> Ash.Changeset.for_create(:create, %{name: "a"})
+        |> Ash.create!()
+
+      for title <- ["matching", "matching", "other"] do
+        Post
+        |> Ash.Changeset.for_create(:create, %{title: title, author_id: author.id})
+        |> Ash.create!()
+      end
+
+      paginated_posts =
+        Post
+        |> Ash.Query.for_read(:by_title, %{title: "matching"})
+        |> Ash.Query.page(limit: 1, count: true)
+
+      assert [author] =
+               Author
+               |> Ash.Query.load(posts_by_title: paginated_posts)
+               |> Ash.read!()
+
+      assert %Ash.Page.Keyset{
+               count: 2,
+               results: [%Post{title: "matching"}]
+             } = author.posts_by_title
     end
 
     test "it allows counting many_to_many relationships" do
