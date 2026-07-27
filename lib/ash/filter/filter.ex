@@ -1649,8 +1649,9 @@ defmodule Ash.Filter do
     if query.__validated_for_action__ == action do
       query
     else
-      Ash.Query.for_read(
-        query,
+      query
+      |> Map.put(:__validated_for_action__, nil)
+      |> Ash.Query.for_read(
         action,
         relationship_query_arguments(relationship, base_query, action),
         actor: actor,
