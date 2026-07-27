@@ -43,6 +43,22 @@ defmodule Ash.UUIDv7 do
 
   @version 7
   @variant 2
+  @monotonic_state_key {__MODULE__, :monotonic_state}
+
+  @on_load :init_monotonic_state
+
+  @doc false
+  def init_monotonic_state do
+    case :persistent_term.get(@monotonic_state_key, nil) do
+      nil ->
+        :persistent_term.put(@monotonic_state_key, :atomics.new(1, signed: false))
+
+      _state ->
+        :ok
+    end
+
+    :ok
+  end
 
   @doc """
   Generates a version 7 UUID using submilliseconds for increased clock precision.
@@ -84,7 +100,7 @@ defmodule Ash.UUIDv7 do
   # Ecto isn't started its generator raises, so we rescue and fall back to the
   # hand-rolled (non-ascending) implementation using the current clock.
   def bingenerate do
-    Ecto.UUID.bingenerate(version: 7, precision: :monotonic)
+    monotonic_bingenerate()
   rescue
     RuntimeError -> do_bingenerate(System.os_time(:nanosecond))
   end
@@ -92,6 +108,48 @@ defmodule Ash.UUIDv7 do
   # The `DateTime` path stays hand-rolled: Ecto's generator cannot embed an
   # arbitrary timestamp, which this clause needs for migrating historical records.
   def bingenerate(%DateTime{} = dt), do: do_bingenerate(DateTime.to_unix(dt, :nanosecond))
+
+  defp monotonic_bingenerate do
+    uuid = Ecto.UUID.bingenerate(version: 7, precision: :monotonic)
+
+    if accept_monotonic?(uuid) do
+      uuid
+    else
+      monotonic_bingenerate()
+    end
+  end
+
+  # Ecto 3.14 advances its nanosecond counter in 244 ns increments, while mapping
+  # it into 4096 sub-millisecond buckets. At some boundaries, consecutive
+  # timestamps therefore map to the same sortable UUID prefix and the random
+  # suffix can make the second UUID sort before the first. Keep an Ash-local
+  # atomic high-water mark and retry those collisions.
+  defp accept_monotonic?(<<sortable_prefix::64, _::64>>) do
+    state = :persistent_term.get(@monotonic_state_key)
+    previous = :atomics.get(state, 1)
+
+    if sortable_prefix > previous do
+      case :atomics.compare_exchange(state, 1, previous, sortable_prefix) do
+        :ok -> true
+        _updated -> accept_monotonic_prefix?(state, sortable_prefix)
+      end
+    else
+      false
+    end
+  end
+
+  defp accept_monotonic_prefix?(state, sortable_prefix) do
+    previous = :atomics.get(state, 1)
+
+    if sortable_prefix > previous do
+      case :atomics.compare_exchange(state, 1, previous, sortable_prefix) do
+        :ok -> true
+        _updated -> accept_monotonic_prefix?(state, sortable_prefix)
+      end
+    else
+      false
+    end
+  end
 
   defp do_bingenerate(timestamp_nanoseconds) do
     timestamp_milliseconds = trunc(timestamp_nanoseconds / 1_000_000)
