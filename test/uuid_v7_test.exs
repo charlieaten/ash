@@ -4,7 +4,8 @@
 
 defmodule Ash.Test.UUIDv7Test do
   @moduledoc false
-  use ExUnit.Case, async: true
+  # The fallback test temporarily removes Ecto's node-global monotonic state.
+  use ExUnit.Case, async: false
 
   test "generate/1 is working" do
     uuid = Ash.UUIDv7.generate()

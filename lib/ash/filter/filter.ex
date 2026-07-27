@@ -1532,7 +1532,9 @@ defmodule Ash.Filter do
     if query.__validated_for_action__ == action do
       query
     else
-      Ash.Query.for_read(query, action, relationship_read_action_arguments(relationship),
+      query
+      |> Map.put(:__validated_for_action__, nil)
+      |> Ash.Query.for_read(action, relationship_read_action_arguments(relationship),
         actor: actor,
         authorize?: true,
         tenant: tenant,
