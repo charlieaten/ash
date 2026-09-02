@@ -655,7 +655,9 @@ defmodule Ash.Actions.Read.Relationships do
               )
               |> case do
                 {:ok, results} ->
-                  {:ok, regroup_manual_results(results, relationship, Enum.count(records))}
+                  results
+                  |> regroup_manual_results(relationship, Enum.count(records))
+                  |> paginate_manual_relationships(records, relationship, related_query)
 
                 {:error, error} ->
                   {:error, error}
@@ -1557,6 +1559,33 @@ defmodule Ash.Actions.Read.Relationships do
     end
   end
 
+  defp paginate_manual_relationships(values, records, %{cardinality: :many} = relationship, query)
+       when is_list(query.page) do
+    query =
+      if Ash.Actions.Sort.sorting_on_identity?(query) do
+        query
+      else
+        Ash.Query.sort(
+          query,
+          query.action.pagination.stable_sort || Ash.Resource.Info.primary_key(query.resource)
+        )
+      end
+
+    # Loading the manual results clears the sort used for their keysets.
+    # Rebuild them and paginate each parent's results with the original query.
+    {:ok,
+     Enum.zip_with(values, records, fn value, record ->
+       value
+       |> Ash.Actions.Sort.runtime_sort(query.sort, domain: query.domain)
+       |> Ash.Page.Keyset.data_with_keyset(query.resource, query.sort)
+       |> apply_runtime_pagination(record, relationship, query)
+     end)}
+  rescue
+    error in Ash.Error.Page.InvalidKeyset -> {:error, error}
+  end
+
+  defp paginate_manual_relationships(values, _records, _relationship, _query), do: {:ok, values}
+
   defp apply_runtime_query_operations(record, relationship, {:ok, value}, related_query) do
     {:ok, apply_runtime_query_operations(record, relationship, value, related_query)}
   end
@@ -1595,7 +1624,7 @@ defmodule Ash.Actions.Read.Relationships do
           :offset
 
         related_query.action.pagination.offset? && related_query.action.pagination.keyset? ->
-          :offset
+          Application.get_env(:ash, :default_page_type, :offset)
 
         related_query.action.pagination.offset? ->
           :offset
@@ -1604,7 +1633,9 @@ defmodule Ash.Actions.Read.Relationships do
           :keyset
       end
 
-    count = Map.get(source_record.aggregates, "__paginated_#{relationship.name}_count__")
+    count =
+      Map.get(source_record.aggregates, "__paginated_#{relationship.name}_count__") ||
+        if(page_opts[:count], do: length(value))
 
     limit =
       page_opts[:limit] ||
@@ -1637,7 +1668,7 @@ defmodule Ash.Actions.Read.Relationships do
                        value,
                        query.filter,
                        tenant: related_query.tenant,
-                       actor: related_query.actor
+                       actor: related_query.context[:private][:actor]
                      ) do
                   {:ok, value} ->
                     value
@@ -1659,8 +1690,11 @@ defmodule Ash.Actions.Read.Relationships do
 
     {value, rest} =
       value
+      |> then(fn values -> if page_opts[:before], do: Enum.reverse(values), else: values end)
       |> Enum.drop(page_opts[:offset] || 0)
       |> Enum.split(limit)
+
+    value = if page_opts[:before], do: Enum.reverse(value), else: value
 
     more? = !Enum.empty?(rest)
 
