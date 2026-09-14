@@ -352,8 +352,10 @@ defmodule Ash.Page.Keyset do
   defp cast_value(resource, field, value) do
     case field_type(resource, field) do
       {type, constraints} ->
-        case Ash.Type.cast_input(type, value, constraints) do
-          {:ok, casted} -> {:ok, casted}
+        with {:ok, constraints} <- Ash.Type.init(type, constraints),
+             {:ok, casted} <- Ash.Type.cast_input(type, value, constraints) do
+          {:ok, casted}
+        else
           _ -> :error
         end
 

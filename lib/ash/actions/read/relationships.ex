@@ -740,9 +740,17 @@ defmodule Ash.Actions.Read.Relationships do
               end
             end)
             |> apply_relationship_offset(relationship)
-            |> Ash.Actions.Read.unpaginated_read(nil,
-              authorize_with: relationship.authorize_read_with
-            )
+            |> then(fn query ->
+              if is_list(query.page) && query.context[:data_layer][:lateral_join_source] do
+                Ash.Actions.Read.read_and_return_unpaged(query, nil,
+                  authorize_with: relationship.authorize_read_with
+                )
+              else
+                Ash.Actions.Read.unpaginated_read(query, nil,
+                  authorize_with: relationship.authorize_read_with
+                )
+              end
+            end)
           end
 
         {relationship, related_query, result}
