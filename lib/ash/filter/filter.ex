@@ -4330,6 +4330,13 @@ defmodule Ash.Filter do
     do_hydrate_refs(value, context)
   end
 
+  def do_hydrate_refs(%Ash.CustomExpression{} = custom, context) do
+    with {:ok, expression} <- do_hydrate_refs(custom.expression, context),
+         {:ok, simple_expression} <- do_hydrate_refs(custom.simple_expression, context) do
+      {:ok, %{custom | expression: expression, simple_expression: simple_expression}}
+    end
+  end
+
   def do_hydrate_refs(%__MODULE__{expression: expression} = filter, context) do
     with {:ok, expr} <- do_hydrate_refs(expression, context) do
       {:ok, %{filter | expression: expr}}

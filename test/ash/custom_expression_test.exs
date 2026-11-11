@@ -169,6 +169,58 @@ defmodule Ash.CustomExpressionTest do
     assert [:author] in paths
   end
 
+  test "custom expressions hydrate deferred parent references when parent context becomes available" do
+    expression = expr(jaro_distance(name, parent(name)))
+
+    assert {:ok, %Ash.CustomExpression{} = custom} =
+             Ash.Filter.hydrate_refs(expression, %{resource: ExampleResource})
+
+    assert {:ok, hydrated} =
+             Ash.Filter.hydrate_refs(custom, %{
+               resource: ExampleResource,
+               parent_stack: [ExampleAuthor]
+             })
+
+    for expression <- [hydrated.expression, elem(hydrated.simple_expression, 1)] do
+      assert [%Ash.Query.Parent{expr: parent_ref}] =
+               Ash.Filter.flat_map(expression, fn
+                 %Ash.Query.Parent{} = parent -> [parent]
+                 _ -> []
+               end)
+
+      assert %Ash.Query.Ref{
+               attribute: %Ash.Resource.Attribute{name: :name},
+               resource: ExampleAuthor
+             } = parent_ref
+    end
+  end
+
+  test "custom expression hydration preserves unsupported simple expressions" do
+    custom = %Ash.CustomExpression{
+      expression: expr(parent(name)),
+      simple_expression: :unknown
+    }
+
+    assert {:ok, %{simple_expression: :unknown}} =
+             Ash.Filter.hydrate_refs(custom, %{
+               resource: ExampleResource,
+               parent_stack: [ExampleAuthor]
+             })
+  end
+
+  test "custom expression hydration returns errors from parent references" do
+    custom = %Ash.CustomExpression{
+      expression: expr(parent(missing_attribute)),
+      simple_expression: :unknown
+    }
+
+    assert {:error, _} =
+             Ash.Filter.hydrate_refs(custom, %{
+               resource: ExampleResource,
+               parent_stack: [ExampleAuthor]
+             })
+  end
+
   describe "operator_expression" do
     setup do
       Application.put_env(:ash, :known_types, [IntList])
